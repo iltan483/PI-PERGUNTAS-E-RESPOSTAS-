@@ -1,0 +1,12 @@
+{
+    "name": "seu-usuario/projeto-perguntas-respostas",
+    "description": "Sistema de Geração Automática de Perguntas e Respostas com IA",
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    },
+    "require": {
+        "guzzlehttp/guzzle": "^7.9"
+    }
+}

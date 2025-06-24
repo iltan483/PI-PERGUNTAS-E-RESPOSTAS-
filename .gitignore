@@ -1,0 +1,16 @@
+.env
+
+/vendor/
+
+*.log
+*.tmp
+/tmp/
+
+/cache/
+
+.idea/         # PhpStorm/IntelliJ
+.vscode/       # VS Code
+.DS_Store      # macOS
+Thumbs.db      # Windows
+
+/web/assets/compiled/ 
