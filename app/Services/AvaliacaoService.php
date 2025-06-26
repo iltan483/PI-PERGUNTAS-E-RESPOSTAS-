@@ -12,7 +12,7 @@ use GuzzleHttp\Exception\RequestException;
 class AvaliacaoService
 {
     private string $apiKey;
-    private string $apiUrl = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
+    private string $apiUrl = 'https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta';
     private Client $httpClient;
 
     public function __construct()

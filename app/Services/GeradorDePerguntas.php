@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Services;
 
 use GuzzleHttp\Client;
@@ -7,7 +8,7 @@ use GuzzleHttp\Exception\RequestException;
 class GeradorDePerguntas
 {
     private string $apiKey;
-    private string $apiUrl = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
+    private string $apiUrl = 'https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta';
     private Client $httpClient;
 
     public function __construct()
@@ -23,53 +24,41 @@ class GeradorDePerguntas
         ]);
     }
 
-    /**
-     * Gera perguntas via Hugging Face.
-     *
-     * @param string $contexto
-     * @param int $numPerguntasObjetivas
-     * @param int $numPerguntasDissertativas
-     * @return string JSON bruto da resposta gerada
-     * @throws \Exception
-     */
     public function gerarPerguntas(string $contexto, int $numPerguntasObjetivas = 1, int $numPerguntasDissertativas = 1): string
     {
         $prompt = $this->buildPrompt($contexto, $numPerguntasObjetivas, $numPerguntasDissertativas);
-
-        return $this->_callIaApi($prompt);
+        return $this->_callIaApi($prompt, $numPerguntasObjetivas, $numPerguntasDissertativas);
     }
 
     private function buildPrompt(string $contexto, int $numObjetivas, int $numDissertativas): string
     {
-        // Alteração Principal: Reestruturação do prompt
         return <<<EOT
-Com base no seguinte contexto: "{$contexto}", gere {$numObjetivas} pergunta(s) objetiva(s) e {$numDissertativas} pergunta(s) dissertativa(s).
+Você é um gerador de provas. Crie exatamente $numObjetivas pergunta(s) objetivas e $numDissertativas pergunta(s) dissertativas com base no seguinte contexto:
 
-As perguntas devem seguir o formato JSON estrito abaixo.
-Sua resposta deve conter APENAS o JSON e NADA MAIS.
-Não inclua nenhum texto, explicação ou caracteres adicionais fora do objeto JSON.
+"$contexto"
 
-Formato JSON esperado:
+A saída deve ser APENAS um JSON com este formato:
+
 {
   "perguntas": [
     {
       "tipo": "objetiva",
-      "texto_pergunta": "[Texto da pergunta objetiva]",
-      "tema": "[Tema da pergunta]",
+      "texto_pergunta": "Qual é a capital do Brasil?",
+      "tema": "Geografia",
       "opcoes": [
-        {"texto": "[Opção 1]", "correta": true},
-        {"texto": "[Opção 2]", "correta": false},
-        {"texto": "[Opção 3]", "correta": false},
-        {"texto": "[Opção 4]", "correta": false}
+        {"texto": "Brasília", "correta": true},
+        {"texto": "Rio de Janeiro", "correta": false},
+        {"texto": "São Paulo", "correta": false},
+        {"texto": "Salvador", "correta": false}
       ],
-      "resposta_modelo_conteudo": "[Texto da opção correta]",
+      "resposta_modelo_conteudo": "Brasília",
       "resposta_modelo_tipo": "exata"
     },
     {
       "tipo": "dissertativa",
-      "texto_pergunta": "[Texto da pergunta dissertativa]",
-      "tema": "[Tema da pergunta]",
-      "resposta_modelo_conteudo": "[Palavras-chave ou parágrafo de modelo]",
+      "texto_pergunta": "Explique o conceito de biodiversidade.",
+      "tema": "Biologia",
+      "resposta_modelo_conteudo": "Diversidade de espécies, variação genética e ecossistemas.",
       "resposta_modelo_tipo": "palavras_chave"
     }
   ]
@@ -77,76 +66,76 @@ Formato JSON esperado:
 EOT;
     }
 
-    private function _callIaApi(string $prompt): string
-{
-    $headers = [
-        'Authorization' => 'Bearer ' . $this->apiKey,
-        'Content-Type' => 'application/json',
-    ];
+    private function _callIaApi(string $prompt, int $numObjetivas, int $numDissertativas): string
+    {
+        $headers = [
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type' => 'application/json',
+        ];
 
-    $data = [
-        'inputs' => $prompt,
-        'parameters' => [
-            'max_new_tokens' => 1024,
-            'temperature' => 0.5,
-            'do_sample' => true,
-        ],
-    ];
+        $data = [
+            'inputs' => $prompt,
+            'parameters' => [
+                'max_new_tokens' => 1024,
+                'temperature' => 0.5,
+                'do_sample' => true,
+            ],
+        ];
 
-    try {
-        $response = $this->httpClient->post($this->apiUrl, [
-            'headers' => $headers,
-            'json' => $data,
-        ]);
-    } catch (RequestException $e) {
-        $resposta = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : 'N/A';
-        error_log("Erro na requisição Hugging Face: " . $e->getMessage() . " Resposta: " . $resposta);
-        throw new \Exception("Erro ao comunicar com a API Hugging Face: " . $e->getMessage());
+        try {
+            $response = $this->httpClient->post($this->apiUrl, [
+                'headers' => $headers,
+                'json' => $data,
+            ]);
+        } catch (RequestException $e) {
+            $resposta = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : 'N/A';
+            error_log("Erro na requisição Hugging Face: " . $e->getMessage() . " Resposta: " . $resposta);
+            throw new \Exception("Erro ao comunicar com a API Hugging Face: " . $e->getMessage());
+        }
+
+        $body = $response->getBody()->getContents();
+
+        $responseData = json_decode($body, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception("Erro ao decodificar JSON da resposta bruta: " . json_last_error_msg());
+        }
+
+        if (isset($responseData[0]['generated_text'])) {
+            $generatedText = $responseData[0]['generated_text'];
+        } elseif (isset($responseData['generated_text'])) {
+            $generatedText = $responseData['generated_text'];
+        } else {
+            throw new \Exception("Formato inesperado da resposta da API. Conteúdo: " . print_r($responseData, true));
+        }
+
+        if (preg_match_all('/\{(?:[^{}]|(?R))*\}/s', $generatedText, $matches)) {
+            $jsonString = trim(end($matches[0]));
+
+            if (str_starts_with($jsonString, '"{') || str_contains($jsonString, '\\"')) {
+                $jsonString = stripslashes(trim($jsonString, '"'));
+            }
+        } else {
+            throw new \Exception("Resposta da IA não contém JSON válido. Conteúdo: " . $generatedText);
+        }
+
+        $finalResponseData = json_decode($jsonString, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception("Erro ao decodificar JSON final: " . json_last_error_msg() . " Conteúdo JSON: " . $jsonString);
+        }
+
+        if (!isset($finalResponseData['perguntas']) || !is_array($finalResponseData['perguntas'])) {
+            throw new \Exception("JSON final não contém a chave 'perguntas' ou não é array.");
+        }
+
+        // Filtro para garantir a quantidade correta
+        $objetivas = array_filter($finalResponseData['perguntas'], fn($p) => $p['tipo'] === 'objetiva');
+        $dissertativas = array_filter($finalResponseData['perguntas'], fn($p) => $p['tipo'] === 'dissertativa');
+
+        $objetivas = array_slice($objetivas, 0, $numObjetivas);
+        $dissertativas = array_slice($dissertativas, 0, $numDissertativas);
+
+        $finalResponseData['perguntas'] = array_merge($objetivas, $dissertativas);
+
+        return json_encode($finalResponseData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
-
-    $body = $response->getBody()->getContents();
-
-
-    // Tenta decodificar a resposta JSON
-    $responseData = json_decode($body, true);
-
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new \Exception("Erro ao decodificar JSON da API Hugging Face: " . json_last_error_msg() . " Conteúdo bruto: " . $body);
-    }
-
-    // Extrai o texto gerado (diferentes modelos têm diferentes estruturas)
-    if (isset($responseData[0]['generated_text'])) {
-        $generatedText = $responseData[0]['generated_text'];
-    } elseif (isset($responseData['generated_text'])) {
-        $generatedText = $responseData['generated_text'];
-    } elseif (is_string($responseData)) {
-        $generatedText = $responseData;
-    } else {
-        throw new \Exception("Formato inesperado de resposta da API Hugging Face. Conteúdo: " . print_r($responseData, true));
-    }
-
-    // Tenta extrair o JSON embutido no texto gerado
-    // Tenta encontrar todos os blocos JSON
-    if (preg_match_all('/\{(?:[^{}]|(?R))*\}/s', $generatedText, $matches)) {
-        // Se houver mais de um bloco JSON, pega o último (geralmente o que contém os dados reais)
-        $jsonString = trim(end($matches[0]));
-    } else {
-        throw new \Exception("Resposta da IA não contém um bloco JSON válido. Conteúdo: " . $generatedText);
-    }
-
-
-    // Valida o JSON final
-    $finalResponseData = json_decode($jsonString, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new \Exception("Erro ao decodificar JSON final da API Hugging Face: " . json_last_error_msg() . " Conteúdo JSON: " . $jsonString);
-    }
-
-    // Verifica se é o formato esperado
-    if (!isset($finalResponseData['perguntas']) || !is_array($finalResponseData['perguntas'])) {
-        throw new \Exception("Resposta da IA não contém a chave 'perguntas' esperada ou não é array.");
-    }
-
-    return $jsonString;
-}
-
 }
